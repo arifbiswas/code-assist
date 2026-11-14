@@ -5,18 +5,20 @@ Your AI reads the project once, keeps a **map** (feature → file → function) 
 whole files. It remembers progress across `/clear`, learns your preferences, and reports how many
 tokens you used and saved.
 
-Works on **macOS, Linux and Windows**, with full automation in **Claude Code, OpenAI Codex and
-Google Antigravity**. The same memory is shared with Cursor, GitHub Copilot, Gemini CLI and other agents via `AGENTS.md`.
+Works on **macOS, Linux and Windows**, with full automation in **Claude Code, Cursor, OpenAI Codex and
+Google Antigravity**. The same memory is shared with GitHub Copilot, Gemini CLI and other agents via `AGENTS.md`.
 
-| | Claude Code | Codex | Antigravity | Cursor / Copilot / others |
-|---|---|---|---|---|
-| Memory (`.ai/` + AGENTS.md) | ✅ | ✅ | ✅ | ✅ |
-| `code-assist` skill | ✅ `/code-assist` | ✅ `$code-assist` | ✅ `/code-assist` or name it | – |
-| Auto hooks (block big reads, auto-docs, learning) | ✅ per project | ✅ global | ✅ global | – |
-| Token usage in report | ✅ | ✅ | savings only | – |
+| | Claude Code | Cursor | Codex | Antigravity | Copilot / others |
+|---|---|---|---|---|---|
+| Memory (`.ai/` + AGENTS.md) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `code-assist` skill | ✅ `/code-assist` | ✅ `/code-assist` | ✅ `$code-assist` | ✅ `/code-assist` or name it | – |
+| Auto hooks (block big reads, auto-docs, learning) | ✅ per project | ✅ global | ✅ global | ✅ global | – |
+| Token usage in report | ✅ | savings only | ✅ | savings only | – |
 
-`setup` links the skill into `~/.agents/skills` (Codex) and `~/.gemini/config/skills` (Antigravity) and
-adds their global hooks, but only if that tool is installed. Re-run setup after installing a new tool.
+`setup` adds global hooks for Cursor (`~/.cursor/hooks.json`), Codex (`~/.codex/hooks.json`) and Antigravity
+(`~/.gemini/config/hooks.json`), and links the skill for Codex (`~/.agents/skills`) and Antigravity
+(`~/.gemini/config/skills`). Cursor reads `~/.claude/skills` directly. Tools that aren't installed are skipped,
+so re-run setup after installing a new one.
 
 ## Install the skill (once per PC)
 
@@ -39,11 +41,12 @@ Needs `git` and Python 3.8+ (nothing else). No remote script is piped into your 
 
 Ask your AI, inside the project:
 ```
-/code-assist init        (Claude Code, Antigravity)
+/code-assist init        (Claude Code, Cursor, Antigravity)
 $code-assist init        (Codex)
 ```
 Then **start a new chat/session** in that folder so the hooks load. Everything else is automatic.
 In Codex, approve the hooks once with `/hooks` (Codex asks you to review new hooks).
+In Cursor, if **"Include third-party … configs"** is on, the Claude hooks are skipped automatically, so nothing runs twice.
 
 Without Claude (terminal):
 ```bash
@@ -76,19 +79,20 @@ AGENTS.md                 + short memory block for Cursor / Codex / Copilot / Ge
 ~/.claude/code-assist/    global preferences, usage stats, event log
 ```
 
-## What happens automatically (Claude Code, Codex, Antigravity)
+## What happens automatically (Claude Code, Cursor, Codex, Antigravity)
 
 - **Session start / after `/clear`** → progress, recent history and learnings are injected, so clearing loses nothing.
 - **Reading a file > 300 lines whole** (Read, `view_file`, `cat`, `nl`) → blocked; the AI gets that file's function list with line numbers and reads only what it needs.
 - **Reading vendor / lock / generated files** → blocked.
-- **Every edit** (Claude Edit/Write, Codex `apply_patch`, Antigravity write/replace) → symbol index updated; new files queued for CODEMAP.
+- **Every edit** (Claude Edit/Write, Cursor afterFileEdit, Codex `apply_patch`, Antigravity write/replace) → symbol index updated; new files queued for CODEMAP.
 - **After ~4 edits** → PROGRESS and HISTORY updated.
 - **Context ≥ 80k tokens** → progress saved and you're told to type `/clear`.
 - **You correct it** ("don't…", "always…", "eivabe na", "ভুল") → the lesson is saved.
 - **Every turn** → token usage recorded for the report.
 
-Agents without supported hooks (Cursor, Copilot, …) get guidance only: they read the same `.ai/` memory via `AGENTS.md`.
-Codex and Antigravity hook support follows their official docs, but only the adapters have been tested, by simulating each tool's hook input. It hasn't been run inside those apps yet. Please report issues.
+Agents without supported hooks (Copilot, Gemini CLI, …) get guidance only: they read the same `.ai/` memory via `AGENTS.md`.
+Cursor, Codex and Antigravity hook support follows their official docs, but only the adapters have been tested, by simulating each tool's hook input. It hasn't been run inside those apps yet. Please report issues.
+Cursor note: its prompt hook can't add context, so learning nudges and the "context is large" notice arrive when the agent finishes its turn.
 
 Tuning (env vars): `CODE_ASSIST_BIG_FILE_LINES=300`, `CODE_ASSIST_CLEAR_AT=80000`, `CODE_ASSIST_PROGRESS_EVERY=4`.
 
@@ -108,7 +112,7 @@ Run the two install lines above. `setup.sh` / `setup.ps1` moves the old skill as
 
 Per project: remove the `code-assist` hook entries from `.claude/settings.json` and the
 `code-assist:start … end` blocks from `CLAUDE.md` and `AGENTS.md`. You can also delete `.ai/`.
-Global: remove the code-assist entries from `~/.codex/hooks.json` and the `"code-assist"` key from
+Global: remove the code-assist entries from `~/.cursor/hooks.json` and `~/.codex/hooks.json`, the `"code-assist"` key from
 `~/.gemini/config/hooks.json`, plus the links `~/.agents/skills/code-assist` and `~/.gemini/config/skills/code-assist`.
 To remove the skill: `rm -rf ~/.claude/skills/code-assist`.
 
@@ -119,7 +123,7 @@ To remove the skill: `rm -rf ~/.claude/skills/code-assist`.
 1. যেকোনো PC-তে উপরের দুই line চালাও: `git clone`, তারপর `setup.sh` (Mac/Linux/Git Bash) বা `setup.ps1` (Windows PowerShell)।
 2. Project খুলে Claude-এ `/code-assist init` লেখো, তারপর নতুন session খোলো।
 3. এরপর সব automatic: AI পুরো file না পড়ে সরাসরি দরকারি line-এ যাবে, progress মনে রাখবে, তোমার pattern শিখবে।
-4. Claude Code, Codex আর Antigravity তিনটাতেই automatic hooks চলে। Cursor বা Copilot `AGENTS.md` থেকে একই memory পড়বে।
+4. Claude Code, Cursor, Codex আর Antigravity, এই চারটাতেই automatic hooks চলে। Copilot বা অন্য tool `AGENTS.md` থেকে একই memory পড়বে।
 5. হিসাব দেখতে: `/code-assist report`
 
 MIT License.

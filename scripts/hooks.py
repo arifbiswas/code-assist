@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""code-assist hook dispatcher for Claude Code, OpenAI Codex and Google Antigravity.
+"""code-assist hook dispatcher for Claude Code, OpenAI Codex, Google Antigravity and Cursor.
 
-    <py> hooks.py <session_start|prompt|pre_tool|post_tool|stop|session_end> [--agent claude|codex|antigravity]
+    <py> hooks.py <session_start|prompt|pre_tool|post_tool|stop|session_end> [--agent claude|codex|antigravity|cursor]
 
 Each tool's JSON is normalised to one internal shape, handled once, and answered in that
 tool's own output format. Never breaks a session: any error -> silent, permissive exit.
@@ -54,19 +54,32 @@ def emit(obj):
 def add_context(event, text):
     if AGENT == "antigravity":
         emit({"injectSteps": [{"systemMessage": text}]})
+    if AGENT == "cursor":
+        emit({"additional_context": text})
     emit({"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}})
 
 
 def deny(reason):
     if AGENT == "antigravity":
         emit({"decision": "deny", "reason": reason})
+    if AGENT == "cursor":
+        emit({"permission": "deny", "agent_message": reason,
+              "user_message": "code-assist: blocked a wasteful file read"})
     emit({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                  "permissionDecision": "deny",
                                  "permissionDecisionReason": reason}})
 
 
 def block_stop(reason):
+    if AGENT == "cursor":
+        emit({"followup_message": reason})
     emit({"decision": "continue" if AGENT == "antigravity" else "block", "reason": reason})
+
+
+DEFAULT_OUT = {  # tools that need a JSON answer even when we have nothing to say
+    "antigravity": {"pre_tool": {"decision": "allow"}},
+    "cursor": {"pre_tool": {"permission": "allow"}, "prompt": {"continue": True}},
+}
 
 
 # --------------------------------------------------------------- normalise
@@ -81,8 +94,50 @@ def _path_from(ws):
     return ws
 
 
+def _json(v):
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except ValueError:
+            return {"command": v}
+    return v or {}
+
+
+def normalize_cursor(raw):
+    ev = raw.get("hook_event_name", "")
+    roots = raw.get("workspace_roots") or []
+    cwd = raw.get("cwd") or (_path_from(roots[0]) if roots else os.environ.get("CURSOR_PROJECT_DIR") or os.getcwd())
+    d = {"session_id": raw.get("conversation_id") or raw.get("session_id"),
+         "transcript_path": raw.get("transcript_path"), "cwd": cwd, "prompt": raw.get("prompt", ""),
+         "source": "startup", "loop_count": raw.get("loop_count", 0)}
+    if ev in ("beforeShellExecution", "afterShellExecution"):
+        d.update(tool_name="Bash", tool_input={"command": raw.get("command", ""), "workdir": raw.get("cwd")})
+    elif ev == "afterFileEdit":
+        edits = raw.get("edits") or []
+        new = len(edits) == 1 and not edits[0].get("old_string")
+        d.update(tool_name="Write" if new else "Edit", tool_input={"file_path": raw.get("file_path")})
+    elif ev in ("preToolUse", "postToolUse"):
+        tn, ti = raw.get("tool_name"), _json(raw.get("tool_input"))
+        if tn == "Read":
+            off = ti.get("offset") or ti.get("start_line_one_indexed")
+            lim = ti.get("limit")
+            end = ti.get("end_line_one_indexed_inclusive")
+            if lim is None and end and off:
+                lim = int(end) - int(off) + 1
+            d.update(tool_name="Read", tool_input={
+                "file_path": ti.get("file_path") or ti.get("path") or ti.get("target_file"),
+                "offset": off, "limit": lim})
+        elif tn == "Shell":
+            d.update(tool_name="Bash", tool_input={"command": ti.get("command", ""), "workdir": raw.get("cwd")})
+        else:
+            d.update(tool_name=tn, tool_input=ti)
+    return d
+
+
 def normalize(raw):
-    """Antigravity -> the Claude/Codex shape everything else uses."""
+    """Antigravity / Cursor -> the Claude/Codex shape everything else uses."""
+    if AGENT == "cursor":
+        return normalize_cursor(raw)
     if AGENT != "antigravity":
         return raw
     ws = raw.get("workspacePaths") or []
@@ -219,6 +274,10 @@ def prompt(data, proj):
         notes.append(
             "[code-assist] If this message corrects you or states a preference/habit, record it once: "
             f"{LOG} learn \"<lesson>\" (add --global if it applies to all projects). Skip if already recorded.")
+    if AGENT == "cursor":  # beforeSubmitPrompt can't add context: deliver these at stop
+        st["pending_notes"] = notes
+        save_state(sid, st)
+        return
     save_state(sid, st)
     if notes:
         add_context("UserPromptSubmit", "\n".join(notes))
@@ -303,7 +362,7 @@ def stop(data, proj):
     if AGENT == "antigravity":  # no stop_hook_active: ask at most once per user message
         if st.get("stop_asked_for") == data.get("prompt", "") and "stop_asked_for" in st:
             return
-    elif data.get("stop_hook_active"):
+    elif data.get("stop_hook_active") or (AGENT == "cursor" and data.get("loop_count")):
         return
     cm = read_text(proj / ".ai" / "CODEMAP.md")
     pend = [f for f in st.get("pending_map", []) if f not in cm and (proj / f).exists()]
@@ -316,6 +375,9 @@ def stop(data, proj):
         todo.append(f"overwrite .ai/PROGRESS.md (<=12 lines: done / in progress / next / open issues) and run {LOG} done \"<one line summary>\"")
         what.append("PROGRESS/HISTORY")
         st["edits_since_progress"] = 0
+    if AGENT == "cursor" and st.get("pending_notes"):
+        todo += [n.replace("[code-assist] ", "") for n in st.pop("pending_notes")]
+        what.append("delivered notes")
     if todo and AGENT == "antigravity":
         st["stop_asked_for"] = data.get("prompt", "")
     save_state(sid, st)
@@ -346,6 +408,8 @@ def main():
         raw = json.load(sys.stdin)
     except ValueError:
         raw = {}
+    if AGENT == "claude" and "cursor_version" in raw:
+        sys.exit(0)  # Cursor running the Claude config (third-party mode): the --agent cursor hooks handle it
     try:
         data = normalize(raw)
         proj = project_dir(data)
@@ -361,8 +425,8 @@ def main():
         except OSError:
             pass
     finally:
-        if AGENT == "antigravity" and not EMITTED:  # Antigravity expects JSON every time
-            print(json.dumps({"decision": "allow"} if event == "pre_tool" else {}))
+        if AGENT in DEFAULT_OUT and not EMITTED:  # these tools expect JSON every time
+            print(json.dumps(DEFAULT_OUT[AGENT].get(event, {})))
     sys.exit(0)
 
 

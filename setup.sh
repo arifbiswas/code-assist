@@ -45,5 +45,5 @@ echo "✅ code-assist skill ready at $DEST  (Claude Code)"
 CODE_ASSIST_PY="$PY" $PY "$DEST/scripts/setup_agents.py" "$@"
 echo
 echo "Next, in any project:"
-echo "  - Claude Code / Antigravity:  /code-assist init     - Codex:  \$code-assist init"
+echo "  - Claude Code / Cursor / Antigravity:  /code-assist init     - Codex:  \$code-assist init"
 echo "  - or terminal:                bash ~/.claude/skills/code-assist/install.sh /path/to/project"

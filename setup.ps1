@@ -51,5 +51,5 @@ $rest = @($Py | Select-Object -Skip 1)
 & $Py[0] @rest (Join-Path $Dest "scripts\setup_agents.py") @args
 Write-Host ""
 Write-Host "Next, in any project:"
-Write-Host "  - Claude Code / Antigravity:  /code-assist init     - Codex:  `$code-assist init"
+Write-Host "  - Claude Code / Cursor / Antigravity:  /code-assist init     - Codex:  `$code-assist init"
 Write-Host "  - or PowerShell:   powershell -ExecutionPolicy Bypass -File `"$Dest\install.ps1`" -Project C:\path\to\project"

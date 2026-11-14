@@ -3,6 +3,7 @@
 
 - OpenAI Codex:      skill link  ~/.agents/skills/code-assist   + hooks in ~/.codex/hooks.json
 - Google Antigravity: skill link ~/.gemini/config/skills/code-assist + hooks in ~/.gemini/config/hooks.json
+- Cursor:            hooks in ~/.cursor/hooks.json (Cursor already loads skills from ~/.claude/skills)
 Claude Code needs nothing here (skill lives in ~/.claude/skills; hooks are per project via install).
 Hooks are global but do nothing in folders without a .ai/ directory.
 
@@ -113,6 +114,34 @@ def antigravity_hooks():
     return f"hooks -> {path}"
 
 
+def cursor_hooks():
+    path = HOME / ".cursor" / "hooks.json"
+    s = _load(path)
+    if s is None:
+        return f"skipped: {path} is not valid JSON"
+    s.setdefault("version", 1)
+    hooks = s.setdefault("hooks", {})
+    reads = r"^\s*(cat|nl|bat|less|more|type|Get-Content|gc)\b"
+    partial = r"^\s*(sed|head)\b"
+    wanted = {"sessionStart": [(None, "session_start")], "beforeSubmitPrompt": [(None, "prompt")],
+              "preToolUse": [("Read", "pre_tool")], "beforeShellExecution": [(reads, "pre_tool")],
+              "postToolUse": [("Read", "post_tool")], "afterShellExecution": [(partial, "post_tool")],
+              "afterFileEdit": [(None, "post_tool")], "stop": [(None, "stop")],
+              "sessionEnd": [(None, "session_end")]}
+    for event, defs in wanted.items():
+        cur = [h for h in hooks.get(event, []) if "--agent cursor" not in str(h.get("command", ""))]
+        for matcher, arg in defs:
+            h = {"command": hook_cmd(arg, "cursor"), "timeout": 15}
+            if matcher:
+                h["matcher"] = matcher
+            if event == "stop":
+                h["loop_limit"] = 1
+            cur.append(h)
+        hooks[event] = cur
+    write_text(path, json.dumps(s, indent=2) + "\n")
+    return f"hooks -> {path}  (skill: Cursor reads ~/.claude/skills directly)"
+
+
 def main():
     utf8_stdio()
     force = "--force" in sys.argv
@@ -128,6 +157,10 @@ def main():
         print("               " + antigravity_hooks())
     else:
         print("  Antigravity: not found (~/.gemini) - install Antigravity, then re-run setup")
+    if force or (HOME / ".cursor").is_dir():
+        print("  Cursor:      " + cursor_hooks())
+    else:
+        print("  Cursor:      not found (~/.cursor) - install Cursor, then re-run setup")
 
 
 if __name__ == "__main__":
