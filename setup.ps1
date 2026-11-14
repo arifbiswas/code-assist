@@ -33,8 +33,23 @@ if (Test-Path (Join-Path $Dest ".git")) {
     git clone --depth 1 --quiet $Repo $Dest
 }
 
-Write-Host "code-assist skill ready at $Dest"
+$Py = $null
+foreach ($cand in @("python", "py -3", "python3")) {
+    $parts = $cand.Split(" ")
+    $rest = @($parts | Select-Object -Skip 1)
+    try {
+        & $parts[0] @rest -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" 2>$null
+        if ($LASTEXITCODE -eq 0) { $Py = $parts; break }
+    } catch {}
+}
+if (-not $Py) { throw "Python 3.8+ is required: https://www.python.org/downloads/ (tick 'Add to PATH')" }
+
+Write-Host "code-assist skill ready at $Dest  (Claude Code)"
+# Codex + Antigravity: link the skill and install their global hooks (skipped if not installed)
+$env:CODE_ASSIST_PY = ($Py -join " ")
+$rest = @($Py | Select-Object -Skip 1)
+& $Py[0] @rest (Join-Path $Dest "scripts\setup_agents.py") @args
 Write-Host ""
 Write-Host "Next, in any project:"
-Write-Host "  - In Claude Code:  /code-assist init"
+Write-Host "  - Claude Code / Antigravity:  /code-assist init     - Codex:  `$code-assist init"
 Write-Host "  - or PowerShell:   powershell -ExecutionPolicy Bypass -File `"$Dest\install.ps1`" -Project C:\path\to\project"

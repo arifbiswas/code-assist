@@ -71,6 +71,11 @@ def script_cmd(name):
     return f'{py_cmd()} "{(SKILL_DIR / "scripts" / name).as_posix()}"'
 
 
+def hook_cmd(event, agent="claude"):
+    """Command line a tool's hook config runs, e.g. python3 ".../hooks.py" stop --agent codex"""
+    return script_cmd("hooks.py") + f" {event}" + ("" if agent == "claude" else f" --agent {agent}")
+
+
 def find_project(start=None):
     """Nearest folder (walking up) that has a .ai/ directory."""
     p = Path(start or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()).resolve()
@@ -173,9 +178,18 @@ def drop_state(sid):
         pass
 
 
+def _local_date(ts):
+    try:
+        return datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().date().isoformat()
+    except (ValueError, AttributeError):
+        return today()
+
+
 def session_usage(transcript_path):
-    """Token usage per local date + current context size, from a Claude Code transcript."""
-    by_msg = {}
+    """Token usage per local date + current context size.
+    Understands Claude Code transcripts ("usage" on assistant messages) and Codex rollouts
+    ("token_count" events with cumulative totals). Other formats -> empty."""
+    by_msg, codex_points = {}, []
     last_ctx = 0
     if not transcript_path:
         return {"by_date": {}, "context": 0}
@@ -185,11 +199,20 @@ def session_usage(transcript_path):
         return {"by_date": {}, "context": 0}
     with f:
         for line in f:
-            if '"usage"' not in line:
+            is_claude, is_codex = '"usage"' in line, '"token_count"' in line
+            if not (is_claude or is_codex):
                 continue
             try:
                 e = json.loads(line)
             except ValueError:
+                continue
+            if is_codex:
+                p = e.get("payload") or {}
+                info = (p.get("info") or {}) if p.get("type") == "token_count" else {}
+                if info.get("total_token_usage"):
+                    codex_points.append((e.get("timestamp", ""), info["total_token_usage"]))
+                if info.get("last_token_usage"):
+                    last_ctx = info["last_token_usage"].get("input_tokens", 0)
                 continue
             msg = e.get("message") or {}
             u = msg.get("usage")
@@ -200,17 +223,29 @@ def session_usage(transcript_path):
                 last_ctx = (u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0)
                             + u.get("cache_creation_input_tokens", 0))
     by_date = {}
+
+    def bucket(ts):
+        return by_date.setdefault(_local_date(ts), {"input": 0, "output": 0, "cache_read": 0,
+                                                    "cache_write": 0, "turns": 0})
     for ts, u in by_msg.values():
-        try:
-            d = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().date().isoformat()
-        except ValueError:
-            d = today()
-        b = by_date.setdefault(d, {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "turns": 0})
+        b = bucket(ts)
         b["input"] += u.get("input_tokens", 0)
         b["output"] += u.get("output_tokens", 0)
         b["cache_read"] += u.get("cache_read_input_tokens", 0)
         b["cache_write"] += u.get("cache_creation_input_tokens", 0)
         b["turns"] += 1
+    prev = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
+    for ts, tot in codex_points:  # cumulative totals -> per-request deltas
+        d = {k: tot.get(k, 0) - prev.get(k, 0) for k in prev}
+        if min(d.values()) < 0 or not any(d.values()):
+            prev = {k: tot.get(k, 0) for k in prev}
+            continue
+        b = bucket(ts)
+        b["input"] += d["input_tokens"] - d["cached_input_tokens"]
+        b["cache_read"] += d["cached_input_tokens"]
+        b["output"] += d["output_tokens"]
+        b["turns"] += 1
+        prev = {k: tot.get(k, 0) for k in prev}
     return {"by_date": by_date, "context": last_ctx}
 
 

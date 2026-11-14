@@ -7,8 +7,9 @@ description: Coding assistant memory manager that cuts token usage automatically
 
 Skill dir `$CA` = `~/.claude/skills/code-assist`. Python command `<py>` = the one at the top of the
 "Memory" commands in `.ai/RULES.md` (python3 on macOS/Linux, usually `python` or `py -3` on Windows).
-Works the same on macOS, Linux and Windows (Git Bash). Hooks do the automatic part; you do the
-thinking part. Be brief with the user — report results, not process. Reply in the user's language.
+Works the same on macOS, Linux and Windows, in Claude Code, OpenAI Codex and Google Antigravity
+(other agents read the same memory via AGENTS.md). Hooks do the automatic part; you do the
+thinking part. If you can't run shell commands, do the steps by editing the files directly. Be brief with the user — report results, not process. Reply in the user's language.
 
 Arguments: `init` (default if `.ai/` is missing), `sync`, `report [--days N] [--all]`, `learn "<text>"`, `status`.
 
@@ -27,8 +28,8 @@ Arguments: `init` (default if `.ai/` is missing), `sync`, `report [--days N] [--
    - If an old CLAUDE.md has long docs duplicated in CODEMAP/PATTERNS, offer to slim it (ask first).
 3. **New project**: leave the templates; they fill up as you work. Add the stack to PATTERNS once chosen.
 4. `<py> $CA/scripts/log.py optimize "init: CODEMAP <n> lines, PATTERNS <n> lines"`.
-5. Tell the user: done, and **start a new Claude Code session in this folder** so the hooks load.
-   Other AI tools (Cursor, Codex, Copilot, Gemini CLI, Windsurf…) pick up AGENTS.md automatically.
+5. Tell the user: done, and **start a new chat/session in this folder** so the hooks load.
+   Codex and Antigravity hooks are global (installed by setup); Cursor, Copilot, Gemini CLI… use AGENTS.md.
 
 ## sync — refresh memory (after big changes, `git pull`, or weekly)
 1. `<py> $CA/scripts/symbols.py "$PWD"` (rebuild index).
@@ -52,16 +53,16 @@ of advice (low cache hit rate -> avoid /clear mid-task; many blocked reads -> ru
 Show: `.ai/` present?, `wc -l .ai/*.md`, symbol count (`wc -l .ai/symbols.txt`),
 hooks present (`grep -c code-assist .claude/settings.json`), AGENTS.md present?
 
-## What runs automatically (Claude Code hooks)
+## What runs automatically (hooks: Claude Code, Codex, Antigravity)
 - SessionStart (startup / after /clear / after compact): injects PROGRESS, last HISTORY lines,
   LEARNINGS and global USER_PATTERNS — so `/clear` loses nothing.
-- Read of a file > 300 lines without offset/limit -> blocked with that file's symbol outline
-  (line numbers). Vendor/lock/generated files blocked.
-- Every edit -> symbol index refreshed for that file; new files queued for CODEMAP.
+- Reading a file > 300 lines whole (Read / view_file / `cat`, `nl`) -> blocked with that file's
+  symbol outline (line numbers). Vendor/lock/generated files blocked.
+- Every edit (Edit/Write, Codex apply_patch, Antigravity write/replace) -> symbol index refreshed; new files queued for CODEMAP.
 - Stop -> unmapped new files or ≥4 edits since last PROGRESS -> you're asked to update them.
 - Context ≥ 80k tokens -> save progress and tell the user to /clear.
 - User message looks like a correction/preference -> you're nudged to `log.py learn` it.
-- Usage per session (input/output/cache) recorded for the report.
+- Usage per session (input/output/cache) recorded for the report (Claude Code and Codex; Antigravity: savings only).
 Tuning env vars: `CODE_ASSIST_BIG_FILE_LINES` (300), `CODE_ASSIST_CLEAR_AT` (80000),
 `CODE_ASSIST_PROGRESS_EVERY` (4).
 

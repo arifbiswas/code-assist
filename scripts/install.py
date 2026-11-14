@@ -128,10 +128,10 @@ def main():
     print(f"✅ code-assist installed in {proj}")
     print(f"   indexed {files} files, {syms} symbols -> .ai/symbols.txt")
     if files > 5:
-        print("   EXISTING project -> in Claude Code run:  /code-assist init   (builds CODEMAP + PATTERNS once)")
+        print("   EXISTING project -> ask your AI:  /code-assist init  (Codex: $code-assist init)  to build CODEMAP + PATTERNS once")
     else:
         print("   NEW project -> memory files fill up automatically as you work.")
-    print("   Start a NEW Claude Code session in this folder so the hooks load.")
+    print("   Start a NEW chat/session in this folder so the hooks load.")
 
 
 if __name__ == "__main__":

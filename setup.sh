@@ -31,8 +31,18 @@ else
 fi
 chmod +x "$DEST/install.sh" "$DEST"/scripts/*.py 2>/dev/null || true
 
-echo "✅ code-assist skill ready at $DEST"
+PY=""
+for c in python3 python "py -3"; do
+  if $c -c "import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)" >/dev/null 2>&1; then
+    PY="$c"; break
+  fi
+done
+[ -n "$PY" ] || { echo "Python 3.8+ is required: https://www.python.org/downloads/"; exit 1; }
+
+echo "✅ code-assist skill ready at $DEST  (Claude Code)"
+# Codex + Antigravity: link the skill and install their global hooks (skipped if not installed)
+CODE_ASSIST_PY="$PY" $PY "$DEST/scripts/setup_agents.py" "$@"
 echo
 echo "Next, in any project:"
-echo "  - In Claude Code:  /code-assist init"
-echo "  - or terminal:     bash ~/.claude/skills/code-assist/install.sh /path/to/project"
+echo "  - Claude Code / Antigravity:  /code-assist init     - Codex:  \$code-assist init"
+echo "  - or terminal:                bash ~/.claude/skills/code-assist/install.sh /path/to/project"

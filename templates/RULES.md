@@ -8,7 +8,8 @@
 ## Finding code (cheapest first)
 1. .ai/CODEMAP.md (feature -> file -> symbol). Read it once per session, only when locating code.
 2. `grep -n "<name>" .ai/symbols.txt` -> exact file:line.
-3. Read with offset/limit (~±40 lines). Never read a big file whole "to understand".
+3. Read only that range (~±40 lines): Read offset/limit, view_file StartLine/EndLine, or `sed -n 'A,Bp' file`.
+   Never read a big file whole "to understand".
 4. Unknown location -> Grep/rg by keyword. Broad exploration -> Explore subagent (keeps your context small).
 5. Never read node_modules, build output, lock files, or generated code.
 
@@ -29,5 +30,5 @@
 - Keep every .ai file short: merge duplicates, delete stale lines. CODEMAP <= 150 lines.
 
 ## Context
-- When told the context is large: save progress, then tell the user to type /clear
+- When told the context is large: save progress, then tell the user to start a fresh chat (/clear)
   (PROGRESS + learnings reload automatically, so nothing is lost).
