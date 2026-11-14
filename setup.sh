@@ -21,6 +21,7 @@ fi
 
 if [ -d "$DEST/.git" ]; then
   echo "Updating code-assist..."
+  git -C "$DEST" config core.fileMode false   # chmod differences must never block an update
   git -C "$DEST" pull --ff-only --quiet
 else
   if [ -e "$DEST" ]; then
