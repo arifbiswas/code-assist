@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import CODE_EXT, IGNORE_DIRS, is_generated, read_text  # noqa: E402
+from common import CODE_EXT, IGNORE_DIRS, is_generated, read_text, utf8_stdio, write_text  # noqa: E402
 
 KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "function", "else",
             "constructor", "super", "new", "typeof", "await", "with", "elif"}
@@ -82,7 +82,7 @@ def walk(proj):
         for fn in sorted(files):
             p = Path(root) / fn
             if p.suffix.lower() in CODE_EXT:
-                r = str(p.relative_to(proj))
+                r = p.relative_to(proj).as_posix()
                 if not is_generated(r) and "test" not in fn.lower():
                     yield p, r
 
@@ -104,7 +104,7 @@ def rebuild(proj):
         count += 1
         if count > 5000:
             break
-    index_path(proj).write_text("\n".join(lines) + ("\n" if lines else ""))
+    write_text(index_path(proj), "\n".join(lines) + ("\n" if lines else ""))
     return count, len(lines)
 
 
@@ -112,16 +112,16 @@ def update_file(proj, path):
     proj = Path(proj).resolve()
     p = Path(path).resolve()
     try:
-        r = str(p.relative_to(proj))
+        r = p.relative_to(proj).as_posix()
     except ValueError:
         return
     if p.suffix.lower() not in CODE_EXT or is_generated(r):
         return
     idx = index_path(proj)
-    old = idx.read_text().splitlines() if idx.exists() else []
+    old = read_text(idx, 50_000_000).splitlines()
     keep = [ln for ln in old if ln.split("\t")[-1].rsplit(":", 1)[0] != r]
     new = fmt(r, index_file(p)) if p.exists() else []
-    idx.write_text("\n".join(keep + new) + "\n")
+    write_text(idx, "\n".join(keep + new) + "\n")
 
 
 def outline(proj, path, limit=40):
@@ -133,6 +133,7 @@ def outline(proj, path, limit=40):
 
 
 if __name__ == "__main__":
+    utf8_stdio()
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)

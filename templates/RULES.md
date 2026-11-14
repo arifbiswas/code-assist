@@ -1,4 +1,4 @@
-# AI working rules (token-saver) — follow automatically, never wait to be asked
+# AI working rules (code-assist) — follow automatically, never wait to be asked
 
 ## Scope
 - Change ONLY what the user asked. No unrequested refactors, renames, reformatting or "improvements".

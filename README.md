@@ -1,84 +1,110 @@
-# token-saver — a Claude Code skill that cuts token usage automatically
+# code-assist — AI coding memory that cuts token usage automatically
 
-Claude reads your project once, keeps a **map** (feature → file → function) and a **symbol index**
+Your AI reads the project once, keeps a **map** (feature → file → function) and a **symbol index**
 (function → `file:line`), and from then on jumps straight to the right lines instead of re-reading
-whole files. It also remembers progress across `/clear`, learns your preferences, and reports how
-many tokens you used and saved.
+whole files. It remembers progress across `/clear`, learns your preferences, and reports how many
+tokens you used and saved.
 
-## Install (any Mac / Linux PC)
+Works on **macOS, Linux and Windows**. Full automation in **Claude Code**; the same memory is
+shared with **Cursor, Codex, GitHub Copilot, Gemini CLI, Windsurf** and other agents via `AGENTS.md`.
 
+## Install the skill (once per PC)
+
+**macOS / Linux / Windows Git Bash**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/arifbiswas/claude-token-saver/main/setup.sh | bash
+git clone https://github.com/arifbiswas/code-assist.git ~/.claude/skills/code-assist
+bash ~/.claude/skills/code-assist/setup.sh
 ```
 
-Same command again = **update**. Requires `git` and `python3` (no other dependencies).
-Windows: use WSL or Git Bash.
+**Windows PowerShell**
+```powershell
+git clone https://github.com/arifbiswas/code-assist.git "$HOME\.claude\skills\code-assist"
+powershell -ExecutionPolicy Bypass -File "$HOME\.claude\skills\code-assist\setup.ps1"
+```
+
+**Update** later: run just the second line again (`setup.sh` / `setup.ps1` pulls the latest version).
+Needs `git` and Python 3.8+ (nothing else). No remote script is piped into your shell: you get a normal git clone you can read first.
 
 ## Use in a project (new or existing)
 
 In Claude Code, inside the project:
-
 ```
-/token-saver init
+/code-assist init
 ```
+Then **start a new Claude Code session** in that folder so the hooks load. Everything else is automatic.
 
-Then **start a new Claude session** in that folder so the hooks load. Done — everything else is automatic.
+Without Claude (terminal):
+```bash
+bash ~/.claude/skills/code-assist/install.sh /path/to/project
+```
+```powershell
+powershell -ExecutionPolicy Bypass -File "$HOME\.claude\skills\code-assist\install.ps1" -Project C:\path\to\project
+```
 
 | Command | What it does |
 |---|---|
-| `/token-saver init` | Install into this project; for existing code, builds CODEMAP + PATTERNS once |
-| `/token-saver report` | Today's tokens used / saved, optimizations, what it learned (`--days 7`, `--all`) |
-| `/token-saver sync` | Refresh map after big changes or `git pull`, compact memory files |
-| `/token-saver learn "…"` | Teach a rule manually (`--global` = all projects) |
-| `/token-saver status` | Check the setup |
+| `/code-assist init` | Install into this project; for existing code, builds CODEMAP + PATTERNS once |
+| `/code-assist report` | Tokens used / saved today, optimizations, what it learned (`--days 7`, `--all`) |
+| `/code-assist sync` | Refresh the map after big changes or `git pull`, compact memory files |
+| `/code-assist learn "…"` | Teach a rule manually (`--global` = all projects) |
+| `/code-assist status` | Check the setup |
 
 ## What it adds to a project
 
 ```
 CLAUDE.md                 + imports .ai/RULES.md and .ai/PATTERNS.md (your content kept)
+AGENTS.md                 + short memory block for Cursor / Codex / Copilot / Gemini … (skip: --no-agents)
 .claude/settings.json     + hooks, + deny rules for node_modules / build / lock files
-.ai/CODEMAP.md            feature -> file -> symbols  (no line numbers, they go stale)
+.ai/CODEMAP.md            feature -> file -> symbols (no line numbers, they go stale)
 .ai/symbols.txt           name -> file:line, auto-updated on every edit (git-ignored)
 .ai/PATTERNS.md           stack, commands, conventions
 .ai/PROGRESS.md           where you left off (overwritten, ≤12 lines)
 .ai/HISTORY.md            dated one-line changelog
 .ai/LEARNINGS.md          corrections & preferences for this project
-~/.claude/token-saver/    global preferences, usage stats, event log
+~/.claude/code-assist/    global preferences, usage stats, event log
 ```
 
-## What happens automatically
+## What happens automatically (Claude Code)
 
 - **Session start / after `/clear`** → progress, recent history and learnings are injected, so clearing loses nothing.
-- **Reading a file > 300 lines without a range** → blocked, and Claude gets that file's function list with line numbers, so it reads only the part it needs.
+- **Reading a file > 300 lines without a range** → blocked; Claude gets that file's function list with line numbers and reads only what it needs.
 - **Reading vendor / lock / generated files** → blocked.
 - **Every edit** → symbol index updated; new files queued for CODEMAP.
 - **After ~4 edits** → PROGRESS and HISTORY updated.
-- **Context ≥ 80k tokens** → progress saved and Claude tells you to type `/clear`.
+- **Context ≥ 80k tokens** → progress saved and you're told to type `/clear`.
 - **You correct it** ("don't…", "always…", "eivabe na", "ভুল") → the lesson is saved.
 - **Every turn** → token usage recorded for the report.
 
-Tuning (env vars): `TOKEN_SAVER_BIG_FILE_LINES=300`, `TOKEN_SAVER_CLEAR_AT=80000`, `TOKEN_SAVER_PROGRESS_EVERY=4`.
+Other agents don't have hooks, so for them it's guidance only: they read the same `.ai/` memory via `AGENTS.md`.
 
-## Limits (honest)
+Tuning (env vars): `CODE_ASSIST_BIG_FILE_LINES=300`, `CODE_ASSIST_CLEAR_AT=80000`, `CODE_ASSIST_PROGRESS_EVERY=4`.
 
-- `/clear` must be typed by you — hooks can't run it. Claude reminds you at the right time.
+## Limits
+
+- You type `/clear` yourself. Hooks can't run it, so Claude reminds you at the right time.
 - "Saved" numbers are estimates (full file size vs. the part actually read). "Used" numbers come from Claude Code's own usage data.
-- The symbol index is regex-based: good for JS/TS/React, Python, Dart/Flutter, PHP/Laravel, Go; may miss exotic syntax.
-- Hook errors never block your session; they go to `~/.claude/token-saver/errors.log`.
+- The symbol index is regex-based. It works well for JS/TS/React, Python, Dart/Flutter, PHP/Laravel and Go, but may miss exotic syntax.
+- Hook errors never block your session. They're written to `~/.claude/code-assist/errors.log`.
+
+## Upgrading from token-saver
+
+Run the two install lines above. `setup.sh` / `setup.ps1` moves the old skill aside, and the next project install migrates your data. Then run
+`/code-assist init` again in each project that used token-saver to update its hooks.
 
 ## Uninstall
 
-Per project: remove the `token-saver` hook entries from `.claude/settings.json`, the
-`token-saver:start … end` block from `CLAUDE.md`, and (optionally) `.ai/`.
-Skill: `rm -rf ~/.claude/skills/token-saver`.
+Per project: remove the `code-assist` hook entries from `.claude/settings.json` and the
+`code-assist:start … end` blocks from `CLAUDE.md` and `AGENTS.md`. You can also delete `.ai/`.
+To remove the skill: `rm -rf ~/.claude/skills/code-assist`.
 
 ---
 
 ### বাংলায় সংক্ষেপে
 
-1. যেকোনো PC-তে উপরের `curl …` command চালাও, skill install হয়ে যাবে।
-2. Project খুলে Claude-এ `/token-saver init` লেখো, তারপর নতুন session খোলো।
+1. যেকোনো PC-তে উপরের দুই line চালাও: `git clone`, তারপর `setup.sh` (Mac/Linux/Git Bash) বা `setup.ps1` (Windows PowerShell)।
+2. Project খুলে Claude-এ `/code-assist init` লেখো, তারপর নতুন session খোলো।
 3. এরপর সব automatic: AI পুরো file না পড়ে সরাসরি দরকারি line-এ যাবে, progress মনে রাখবে, তোমার pattern শিখবে।
-4. হিসাব দেখতে: `/token-saver report`
+4. Cursor, Codex বা Copilot-ও `AGENTS.md` থেকে একই memory পড়বে।
+5. হিসাব দেখতে: `/code-assist report`
 
 MIT License.

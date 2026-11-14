@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""token-saver hook dispatcher.  Usage (from .claude/settings.json):
+"""code-assist hook dispatcher.  Usage (from .claude/settings.json):
     python3 <skill>/scripts/hooks.py <session_start|prompt|pre_tool|post_tool|stop|session_end>
 
 Never breaks the session: any error -> silent exit 0.
@@ -14,12 +14,12 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import symbols  # noqa: E402
-from common import (BINARY_EXT, CODE_EXT, SKILL_DIR, STORE, USER_PATTERNS, cfg,  # noqa: E402
-                    drop_state, est_tokens, is_generated, load_state, log_event,
-                    project_dir, read_text, record_usage, rel, save_state,
-                    session_usage, strip_comments)
+from common import (BINARY_EXT, CODE_EXT, IS_WIN, SKILL_DIR, STORE, USER_PATTERNS,  # noqa: E402
+                    cfg, drop_state, est_tokens, is_generated, load_state, log_event,
+                    project_dir, read_text, record_usage, rel, save_state, script_cmd,
+                    session_usage, strip_comments, utf8_stdio)
 
-LOG = f'python3 "{SKILL_DIR}/scripts/log.py"'
+LOG = script_cmd("log.py")
 
 CORRECTION_RE = re.compile(
     r"\b(vul|bhul|wrong|don'?t|dont|never|always|instead|revert|undo|prefer|"
@@ -56,9 +56,12 @@ def session_start(data, proj):
         return
     ai = proj / ".ai"
     if not (ai / "symbols.txt").exists():
-        subprocess.Popen([sys.executable, str(SKILL_DIR / "scripts/symbols.py"), str(proj)],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    parts = ["[token-saver] Project memory (auto-loaded; do not re-read these files):"]
+        kw = ({"creationflags": 0x00000008 | 0x00000200} if IS_WIN  # DETACHED | NEW_PROCESS_GROUP
+              else {"start_new_session": True})
+        subprocess.Popen([sys.executable, str(SKILL_DIR / "scripts" / "symbols.py"), str(proj)],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, **kw)
+    parts = ["[code-assist] Project memory (auto-loaded; do not re-read these files):"]
     for title, path, fn, n in [
         ("PROGRESS (where we left off)", ai / "PROGRESS.md", head, 15),
         ("Recent history", ai / "HISTORY.md", tail, 5),
@@ -83,14 +86,14 @@ def prompt(data, proj):
     if ctx >= limit and ctx >= st.get("clear_warned_at", 0) + 30000:
         st["clear_warned_at"] = ctx
         notes.append(
-            f"[token-saver] Context is ~{ctx // 1000}k tokens (expensive: every message re-sends it). "
+            f"[code-assist] Context is ~{ctx // 1000}k tokens (expensive: every message re-sends it). "
             "When this task is done: overwrite .ai/PROGRESS.md (<=12 lines) and run "
             f"{LOG} done \"<one line>\", then end your reply with: "
             "\"✅ Progress saved — type /clear to continue cheaply (memory reloads automatically).\"")
         log_event(proj, "optimize", f"context hit {ctx // 1000}k -> saved progress & suggested /clear")
     if CORRECTION_RE.search(data.get("prompt", "")):
         notes.append(
-            "[token-saver] If this message corrects you or states a preference/habit, record it once: "
+            "[code-assist] If this message corrects you or states a preference/habit, record it once: "
             f"{LOG} learn \"<lesson>\" (add --global if it applies to all projects). Skip if already recorded.")
     save_state(sid, st)
     if notes:
@@ -118,7 +121,7 @@ def pre_tool(data, proj):
     if is_generated(r):
         size = p.stat().st_size
         log_event(proj, "saved", f"blocked read of generated/vendor file {r}", est_tokens(size))
-        deny(f"[token-saver] {r} is generated/vendor code (~{est_tokens(size)} tokens). "
+        deny(f"[code-assist] {r} is generated/vendor code (~{est_tokens(size)} tokens). "
              "Grep it for the exact thing you need instead. If the user explicitly needs it, use "
              "`sed -n 'A,Bp'` on a small range.")
     if ti.get("offset") or ti.get("limit"):
@@ -127,7 +130,7 @@ def pre_tool(data, proj):
     n = text.count("\n") + 1
     if n <= cfg("BIG_FILE_LINES", 300):
         return
-    deny(f"[token-saver] {r} has {n} lines (~{est_tokens(len(text))} tokens). Don't read it whole. "
+    deny(f"[code-assist] {r} has {n} lines (~{est_tokens(len(text))} tokens). Don't read it whole. "
          f"Symbols (line: kind name):\n{symbols.outline(proj, p)}\n"
          "Read only the range you need (offset/limit, ~±40 lines) or grep -n first. "
          f"If you truly need the entire file, call Read again with limit={n}.")
@@ -153,7 +156,7 @@ def post_tool(data, proj):
             if saved >= 100:
                 log_event(proj, "saved", f"partial read {r} ({len(part)}/{len(lines)} lines)", saved)
     elif tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
-        if r.startswith(".ai/") or r.startswith(".ai" + os.sep):
+        if r.startswith(".ai/"):
             if p.name == "PROGRESS.md":
                 st["edits_since_progress"] = 0
             if p.name == "CODEMAP.md":
@@ -193,7 +196,7 @@ def stop(data, proj):
     if todo:
         log_event(proj, "optimize", "auto memory update: " + ", ".join(what))
         emit({"decision": "block",
-              "reason": "[token-saver] Before finishing, quietly do this (no explanation to the user): "
+              "reason": "[code-assist] Before finishing, quietly do this (no explanation to the user): "
                         + "; ".join(todo) + ". Then stop."})
 
 
@@ -208,6 +211,7 @@ HANDLERS = {"session_start": session_start, "prompt": prompt, "pre_tool": pre_to
 
 
 def main():
+    utf8_stdio()
     event = sys.argv[1] if len(sys.argv) > 1 else ""
     try:
         data = json.load(sys.stdin)
@@ -223,7 +227,7 @@ def main():
     except Exception as e:  # never break the user's session
         try:
             STORE.mkdir(parents=True, exist_ok=True)
-            with open(STORE / "errors.log", "a") as f:
+            with open(STORE / "errors.log", "a", encoding="utf-8") as f:
                 f.write(f"{event}: {e!r}\n")
         except OSError:
             pass

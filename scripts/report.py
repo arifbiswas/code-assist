@@ -10,7 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import SESS_DIR, find_project, read_events  # noqa: E402
+from common import SESS_DIR, find_project, read_events, utf8_stdio  # noqa: E402
 
 
 def k(n):
@@ -18,6 +18,7 @@ def k(n):
 
 
 def main():
+    utf8_stdio()
     days = 1
     if "--days" in sys.argv:
         days = int(sys.argv[sys.argv.index("--days") + 1])
@@ -33,8 +34,8 @@ def main():
     sessions = 0
     for f in SESS_DIR.glob("*.json") if SESS_DIR.exists() else []:
         try:
-            s = json.loads(f.read_text())
-        except ValueError:
+            s = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             continue
         if not mine(s.get("project")):
             continue
