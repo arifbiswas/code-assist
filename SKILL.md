@@ -67,5 +67,5 @@ Tuning env vars: `CODE_ASSIST_BIG_FILE_LINES` (300), `CODE_ASSIST_CLEAR_AT` (800
 `CODE_ASSIST_PROGRESS_EVERY` (4).
 
 ## Uninstall from a project
-Remove the code-assist entries from `.claude/settings.json`, the `code-assist:start…end` blocks in
+Remove the code-assist entries from `.claude/settings.local.json`, the `code-assist:start…end` blocks in
 CLAUDE.md and AGENTS.md, and optionally `.ai/`. Ask before deleting `.ai/` (it holds the user's notes).

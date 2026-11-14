@@ -146,6 +146,8 @@ def main():
     utf8_stdio()
     force = "--force" in sys.argv
     save_python()
+    from install import migrate_old_store
+    migrate_old_store()
     print("Other AI tools:")
     if force or (HOME / ".codex").is_dir():
         print("  Codex:       skill " + link_skill(HOME / ".agents" / "skills" / "code-assist"))
